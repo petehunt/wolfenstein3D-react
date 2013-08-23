@@ -11,18 +11,15 @@ Wolf.setConsts({
     TEXTURERESOLUTION   : Wolf.ISCHROME ? 128 : 64
 });
 
-
 Wolf.Renderer = (function() {
-    
+
     var slices = [],
         useBackgroundImage = Wolf.ISWEBKIT,
         texturePath = "art/walls-shaded/" + Wolf.TEXTURERESOLUTION + "/",
         spritePath = "art/sprites/" + Wolf.TEXTURERESOLUTION + "/",
-        sprites = [],
         maxDistZ = 64 * 0x10000,
         hasInit = false;
-        visibleSprites = [];
-        
+
     var TILESHIFT = Wolf.TILESHIFT,
         TILEGLOBAL = Wolf.TILEGLOBAL,
         TRACE_HIT_VERT = Wolf.TRACE_HIT_VERT,
@@ -46,363 +43,333 @@ Wolf.Renderer = (function() {
         round = Math.round,
         sqrt = Math.sqrt;
 
-    function init() {
-        var image, slice, x;
-        if (hasInit) {
-            return;
-        }
-        hasInit = true;
-    
-        $("#game .renderer")
-            .width(Wolf.XRES + "px")
-            .height(Wolf.YRES + "px");
-            
-        for (x=0; x<Wolf.XRES; x += Wolf.SLICE_WIDTH) {
-            slice = $("<div>");
-            slice.css({
-                position : "absolute",
-                width : Wolf.SLICE_WIDTH + "px",
-                height : Wolf.YRES + "px",
-                left : x + "px",
-                top : 0,
-                overflow : "hidden"
-            });
-            slice.appendTo("#game .renderer");
+  function processTrace(viewport, tracePoint) {
+    var x = tracePoint.x,
+    y = tracePoint.y,
+    vx = viewport.x,
+    vy = viewport.y,
 
-            image = useBackgroundImage ? $("<div>") : $("<img>");
-            
-            image.css({
-                position : "absolute",
-                display : "block",
-                top : 0,
-                height : 0,
-                width : Wolf.SLICE_WIDTH * Wolf.WALL_TEXTURE_WIDTH + "px",
-                backgroundSize : "100% 100%"
-            });
-            
-            var sliceElement = slice[0];
-            sliceElement.texture = image[0];
-            sliceElement.appendChild(sliceElement.texture);
-            slices.push(sliceElement);
-        }
-    }
-    
-    function reset() {
-        $("#game .renderer .sprite").remove();
-        sprites = [];
-        visibleSprites = [];
-    }
-    
-    function processTrace(viewport, tracePoint) {
-        var x = tracePoint.x,
-            y = tracePoint.y,
-            vx = viewport.x,
-            vy = viewport.y,
-            
-            dx = viewport.x - tracePoint.x,
-            dy = viewport.y - tracePoint.y,
-            dist = Math.sqrt(dx*dx + dy*dy),
-            frac,
-            h, w, offset;
+    dx = viewport.x - tracePoint.x,
+    dy = viewport.y - tracePoint.y,
+    dist = Math.sqrt(dx*dx + dy*dy),
+    frac,
+    h, w, offset;
 
-        // correct for fisheye
-        dist = dist * cos(FINE2RAD(tracePoint.angle - viewport.angle));
-        
-        w = WALL_TEXTURE_WIDTH * SLICE_WIDTH;
-        h = (VIEW_DIST / dist * TILEGLOBAL) >> 0;
-        
-        if (tracePoint.flags & TRACE_HIT_DOOR) {
-            if (tracePoint.flags & TRACE_HIT_VERT) {
-                if (x < vx) {
-                    frac = tracePoint.frac;
-                } else {
-                    frac = 1 - tracePoint.frac;
-                }
-            } else {
-                if (y < vy) {
-                    frac = 1 - tracePoint.frac;
-                } else {
-                    frac = tracePoint.frac;
-                }
-            }
+    // correct for fisheye
+    dist = dist * cos(FINE2RAD(tracePoint.angle - viewport.angle));
+
+    w = WALL_TEXTURE_WIDTH * SLICE_WIDTH;
+    h = (VIEW_DIST / dist * TILEGLOBAL) >> 0;
+
+    if (tracePoint.flags & TRACE_HIT_DOOR) {
+      if (tracePoint.flags & TRACE_HIT_VERT) {
+        if (x < vx) {
+          frac = tracePoint.frac;
         } else {
-            frac = 1 - tracePoint.frac;
+          frac = 1 - tracePoint.frac;
         }
-       
-        offset = frac * w;
-        if (offset > w - SLICE_WIDTH) {
-            offset = w - SLICE_WIDTH;
-        }
-        offset = round(offset / SLICE_WIDTH) * SLICE_WIDTH;
-        if (offset < 0) {
-            offset = 0;
-        }
-        
-        return {
-            w : w,
-            h : h,
-            dist : dist,
-            vert : tracePoint.flags & TRACE_HIT_VERT,
-            offset : offset
-        };
-    }
-    
-    function clear() {
-        var n, sprite;
-        for (n=0;n<visibleSprites.length;n++) {
-            sprite = visibleSprites[n].sprite;
-            if (sprite && sprite.div) {
-                sprite.div.style.display = "none";
-            }
-        }
-    }
-    
-    function draw(viewport, level, tracers, visibleTiles) {
-        var n, tracePoint;
-        
-        for (var n=0,len=tracers.length;n<len;++n) {
-            tracePoint = tracers[n];
-            if (!tracePoint.oob) {
-                if (tracePoint.flags & Wolf.TRACE_HIT_DOOR) {
-                    drawDoor(n, viewport, tracePoint, level);
-                } else {
-                    drawWall(n, viewport, tracePoint, level);
-                }
-            }
-        }
-        drawSprites(viewport, level, visibleTiles);
-    }
-    
-    function updateSlice(n, textureSrc, proc) {
-        var slice = slices[n],
-            image = slice.texture,
-            sliceStyle = slice.style,
-            imgStyle = image.style,
-            top = (Wolf.YRES - proc.h) / 2,
-            left = -(proc.offset) >> 0,
-            height = proc.h,
-            z = (maxDistZ - proc.dist) >> 0,
-            itop;
-            
-        if (Wolf.ISXP && Wolf.ISFIREFOX) {
-            itop = (proc.texture % 2) ? 0 : -height;
+      } else {
+        if (y < vy) {
+          frac = 1 - tracePoint.frac;
         } else {
-            itop = -(proc.texture-1) * height;
-            textureSrc = "art/walls-shaded/64/walls.png";
+          frac = tracePoint.frac;
         }
-       
-        if (image._src != textureSrc) {
-            image._src = textureSrc;
-            if (useBackgroundImage) {
-                imgStyle.backgroundImage = "url(" + textureSrc + ")";
-            } else {
-                image.src = textureSrc;
-            }
-        }
-        
-        if (slice._zIndex != z) {
-            sliceStyle.zIndex = slice._zIndex = z;
-        }
-        if (image._height != height) {
-            sliceStyle.height = (image._height = height) + "px";
-            if (Wolf.ISXP && Wolf.ISFIREFOX) {
-                imgStyle.height = (height * 2) + "px";
-            } else {
-                imgStyle.height = (height * 120) + "px";
-            }
-        }
-        
-        if (image._itop != itop) {
-            imgStyle.top = (image._itop = itop) + "px";
-        }
-        
-        if (image._top != top) {
-            sliceStyle.top = (image._top = top) + "px";
-        }
-        if (image._left != left) {
-            imgStyle.left = (image._left = left) + "px";
-        }
+      }
+    } else {
+      frac = 1 - tracePoint.frac;
     }
 
-    function drawWall(n, viewport, tracePoint, level) {
-        var x = tracePoint.tileX,
-            y = tracePoint.tileY,
-            vx = POS2TILE(viewport.x),
-            vy = POS2TILE(viewport.y),
-            tileMap = level.tileMap,
-            proc = processTrace(viewport, tracePoint),
-            texture = proc.vert ? level.wallTexX[x][y] : level.wallTexY[x][y],
-            textureSrc;
-        
-        
-        // door sides
-        if (tracePoint.flags & TRACE_HIT_VERT) {
-            if (x >= vx && tileMap[x-1][y] & DOOR_TILE) {
-                texture = TEX_PLATE;
-            }
-            if (x < vx && tileMap[x+1][y] & DOOR_TILE) {
-                texture = TEX_PLATE;
-            }
-        } else {
-            if (y >= vy && tileMap[x][y-1] & DOOR_TILE) {
-                texture = TEX_PLATE;
-            }
-            if (y < vy && tileMap[x][y+1] & DOOR_TILE) {
-                texture = TEX_PLATE;
-            }
-        }
-        
-        texture++;
-        
-        proc.texture = texture;
-        
-        if (texture % 2 == 0) {
-            texture--;
-        }
-        textureSrc = texturePath + "w_" + texture + ".png";
-        
-        updateSlice(n, textureSrc, proc);
+    offset = frac * w;
+    if (offset > w - SLICE_WIDTH) {
+      offset = w - SLICE_WIDTH;
     }
-    
-    function drawDoor(n, viewport, tracePoint, level) {
-        var proc = processTrace(viewport, tracePoint),
-            texture, textureSrc;
-            
-        //texture = Wolf.TEX_DDOOR + 1;
-        texture = level.state.doorMap[tracePoint.tileX][tracePoint.tileY].texture + 1;
-        
-        proc.texture = texture;
-        
-        if (texture % 2 == 0) {
-            texture -= 1;
-        }
-        
-        textureSrc = texturePath + "w_" + texture + ".png";
-        
-        updateSlice(n, textureSrc, proc);
+    offset = round(offset / SLICE_WIDTH) * SLICE_WIDTH;
+    if (offset < 0) {
+      offset = 0;
     }
-        
-    function drawSprites(viewport, level, visibleTiles) {
-        var vis, n,
-            dist, dx, dy, angle,
-            z, width, size,
-            div, image,
-            divStyle, imgStyle;
 
-      
-        // build visible sprites list
-        visibleSprites = Wolf.Sprites.createVisList(viewport, level, visibleTiles);
-        
-        for (n = 0; n < visibleSprites.length; ++n ){
-            vis = visibleSprites[n];
-            dist = vis.dist;
-            
-            if (dist < MINDIST / 2 ) {
-                //continue; // little hack to save speed & z-buffer
-            }
-
-            // make sure sprite is loaded
-            if (!vis.sprite.div) {
-                loadSprite(vis.sprite)
-            }
-            
-            div = vis.sprite.div;
-            divStyle = div.style;
-            
-            image = div.image;
-            imgStyle = image.style;
-            
-            dx = vis.sprite.x  - viewport.x;
-            dy = vis.sprite.y  - viewport.y;
-            angle = atan2(dy, dx) - FINE2RAD(viewport.angle);
-            
-            //dist = dist * Math.cos(angle);
-           
-            size = (VIEW_DIST / dist * TILEGLOBAL) >> 0;
-
-            divStyle.display = "block";
-            divStyle.width = size + "px";
-            divStyle.height = size + "px";
-            
-            divStyle.left = (XRES / 2 - size / 2 - tan(angle) * VIEW_DIST) + "px";
-            
-            divStyle.top = (YRES / 2 - size / 2) + "px";
-
-            texture = Wolf.Sprites.getTexture(vis.sprite.tex[0]);
-            textureSrc = spritePath + texture.sheet;
-
-            if (image._src != textureSrc) {
-                image._src = textureSrc;
-                if (useBackgroundImage) {
-                    imgStyle.backgroundImage = "url(" + textureSrc + ")";
-                } else {
-                    image.src = textureSrc;
-                }
-            }
-
-            z = (maxDistZ - dist) >> 0;
-            width = texture.num * size;
-            left = -texture.idx * size;
-                
-            if (div._zIndex != z) {
-                divStyle.zIndex = div._zIndex = z;
-            }
-            if (image._width != width) {
-                imgStyle.width = (image._width = width) + "px";
-            }
-            if (image._height != size) {
-                imgStyle.height = (image._height = size) + "px";
-            }
-            if (image._left != left) {
-                imgStyle.left = (image._left = left) + "px";
-            }
-        }
-    }
-    
-    function unloadSprite(sprite) {
-        if (sprite.div) {
-            $(sprite.div).remove();
-            sprite.div = null;
-        }
-    }
-    
-    function loadSprite(sprite) {
-        var div = document.createElement("div"),
-            image;
-
-        div.style.display = "none";
-        div.style.position = "absolute";
-        div.style.width = "128px";
-        div.style.height = "128px";
-        div.style.overflow = "hidden";
-        div.className = "sprite";
-
-        image = useBackgroundImage ? $("<div>") : $("<img>");
-        
-        image.css({
-            position : "absolute",
-            display : "block",
-            top : 0,
-            height : "100%",
-            width : "100%",
-            backgroundSize : "100%",
-            backgroundRepeat : "no-repeat"
-        });
-        
-        div.image = image[0];
-        div.appendChild(div.image);
-        
-        sprite.div = div;
-        $("#game .renderer").append(div);
-    }
-    
     return {
-        init : init,
-        draw : draw,
-        clear : clear,
-        loadSprite : loadSprite,
-        unloadSprite : unloadSprite,
-        reset : reset
+      w : w,
+      h : h,
+      dist : dist,
+      vert : tracePoint.flags & TRACE_HIT_VERT,
+      offset : offset
     };
+  }
+
+  var DivOrImage = React.createClass({
+    render: function() {
+      if (useBackgroundImage) {
+        return this.transferPropsTo(React.DOM.div({style: {backgroundImage: 'url(' + this.props.src + ')'}}));
+      } else {
+        return this.transferPropsTo(React.DOM.img());
+      }
+    }
+  });
+
+  var Slice = React.createClass({
+    render: function() {
+      var top = (Wolf.YRES - this.props.proc.h) / 2;
+      var left = -(this.props.proc.offset) >> 0;
+      var height = this.props.proc.h;
+      var z = (maxDistZ - this.props.proc.dist) >> 0;
+      var itop;
+      var textureSrc = this.props.textureSrc;
+
+      if (Wolf.ISXP && Wolf.ISFIREFOX) {
+        itop = (this.props.proc.texture % 2) ? 0 : -height;
+      } else {
+        itop = -(this.props.proc.texture-1) * height;
+        textureSrc = "art/walls-shaded/64/walls.png";
+      }
+
+      var imageStyle = {
+        position: 'absolute',
+        display: 'block',
+        left: left,
+        top: itop,
+        height: Wolf.ISXP && Wolf.ISFIREFOX ? (height * 2) : height * 120,
+        width: Wolf.SLICE_WIDTH * Wolf.WALL_TEXTURE_WIDTH,
+        backgroundSize: '100% 100%'
+      };
+      return React.DOM.div({
+        style: {
+          position: 'absolute',
+          width: Wolf.SLICE_WIDTH,
+          height: height,
+          left: this.props.x,
+          top: top,
+          overflow: 'hidden',
+          zIndex: z
+        }
+      }, DivOrImage({style: imageStyle, src: textureSrc}));
+    }
+  });
+
+  var Sprite = React.createClass({
+    getDefaultProps: function() {
+      return {size: 128, imageWidth: '100%', imageHeight: '100%'};
+    },
+    render: function() {
+      var imageStyle = {
+        position: 'absolute',
+        display: 'block',
+        top: 0,
+        left: this.props.imageLeft,
+        height: this.props.imageHeight,
+        width: this.props.imageWidth,
+        backgroundSize: '100%',
+        backgroundRepeat: 'no-repeat'
+      };
+
+      var divStyle = {
+        display: 'block',
+        position: 'absolute',
+        width: this.props.size,
+        height: this.props.size,
+        overflow: 'hidden',
+        left: this.props.left,
+        top: this.props.top,
+        zIndex: this.props.zIndex
+      };
+
+      return React.DOM.div({
+        style: divStyle,
+        className: 'sprite'
+      }, DivOrImage({style: imageStyle, src: this.props.src}));
+    }
+  });
+
+  var Renderer = React.createClass({
+    getInitialState: function() {
+      return {
+        viewport: null,
+        level: null,
+        tracers: null,
+        visibleTiles: null
+      };
+    },
+    reset: function() {
+      this.setState(this.getInitialState());
+    },
+    drawDoor: function(viewport, tracePoint, level) {
+      var proc = processTrace(viewport, tracePoint),
+      texture, textureSrc;
+
+      texture = level.state.doorMap[tracePoint.tileX][tracePoint.tileY].texture + 1;
+
+      proc.texture = texture;
+
+      if (texture % 2 == 0) {
+        texture -= 1;
+      }
+
+      textureSrc = texturePath + "w_" + texture + ".png";
+
+      return {textureSrc: textureSrc, proc: proc};
+    },
+    drawWall: function(viewport, tracePoint, level) {
+      var x = tracePoint.tileX,
+      y = tracePoint.tileY,
+      vx = POS2TILE(viewport.x),
+      vy = POS2TILE(viewport.y),
+      tileMap = level.tileMap,
+      proc = processTrace(viewport, tracePoint),
+      texture = proc.vert ? level.wallTexX[x][y] : level.wallTexY[x][y],
+      textureSrc;
+
+
+      // door sides
+      if (tracePoint.flags & TRACE_HIT_VERT) {
+        if (x >= vx && tileMap[x-1][y] & DOOR_TILE) {
+          texture = TEX_PLATE;
+        }
+        if (x < vx && tileMap[x+1][y] & DOOR_TILE) {
+          texture = TEX_PLATE;
+        }
+      } else {
+        if (y >= vy && tileMap[x][y-1] & DOOR_TILE) {
+          texture = TEX_PLATE;
+        }
+        if (y < vy && tileMap[x][y+1] & DOOR_TILE) {
+          texture = TEX_PLATE;
+        }
+      }
+
+      texture++;
+
+      proc.texture = texture;
+
+      if (texture % 2 == 0) {
+        texture--;
+      }
+      textureSrc = texturePath + "w_" + texture + ".png";
+      return {textureSrc: textureSrc, proc: proc};
+    },
+    drawSprites: function(viewport, level, visibleTiles) {
+      var visibleSprites = Wolf.Sprites.createVisList(viewport, level, visibleTiles);
+      var spriteComponents = [];
+
+      for (var n = 0; n < visibleSprites.length; ++n) {
+        var vis = visibleSprites[n];
+        var dist = vis.dist;
+        var dx = vis.sprite.x - viewport.x;
+        var dy = vis.sprite.y - viewport.y;
+        var angle = atan2(dy, dx) - FINE2RAD(viewport.angle);
+        var size = (VIEW_DIST / dist * TILEGLOBAL) >> 0;
+        var left = (XRES / 2 - size / 2 - tan(angle) * VIEW_DIST);
+        var top = (YRES / 2 - size / 2);
+        var texture = Wolf.Sprites.getTexture(vis.sprite.tex[0]);
+        var textureSrc = spritePath + texture.sheet;
+        var z = (maxDistZ - dist) >> 0;
+        var imageWidth = texture.num * size;
+        var imageLeft = -texture.idx * size;
+
+        // TODO: can we use a better key here?
+        spriteComponents.push(Sprite({
+          key: 'sprite' + n,
+          left: left,
+          top: top,
+          zIndex: z,
+          src: textureSrc,
+          imageWidth: imageWidth,
+          imageHeight: size,
+          size: size,
+          imageLeft: imageLeft
+        }));
+      }
+      return spriteComponents;
+    },
+    _draw: function(viewport, level, tracers, visibleTiles) {
+      var n, tracePoint;
+      var sliceProps = {};
+
+      for (var n=0,len=tracers.length;n<len;++n) {
+        tracePoint = tracers[n];
+        if (!tracePoint.oob) {
+          if (tracePoint.flags & Wolf.TRACE_HIT_DOOR) {
+            sliceProps[n] = this.drawDoor(viewport, tracePoint, level);
+          } else {
+            sliceProps[n] = this.drawWall(viewport, tracePoint, level);
+          }
+        }
+      }
+      var sprites = this.drawSprites(viewport, level, visibleTiles);
+      return {sliceProps: sliceProps, sprites: sprites};
+    },
+    draw: function(viewport, level, tracers, visibleTiles) {
+      this.setState({
+        viewport: viewport,
+        level: level,
+        tracers: tracers,
+        visibleTiles: visibleTiles
+      });
+    },
+    render: function() {
+      if (!this.state.viewport) {
+        return React.DOM.span();
+      }
+      var drawResult = this._draw(
+        this.state.viewport,
+        this.state.level,
+        this.state.tracers,
+        this.state.visibleTiles
+      );
+      var sliceProps = drawResult.sliceProps;
+      var children = [];
+      for (var x = 0; x < Wolf.XRES; x += Wolf.SLICE_WIDTH) {
+        var currentSliceProps = sliceProps[x / Wolf.SLICE_WIDTH] || {};
+        currentSliceProps.key = 'slice' + x;
+        currentSliceProps.x = x;
+        children.push(Slice(currentSliceProps));
+      }
+      return React.DOM.span(null, [children, drawResult.sprites]);
+    }
+  });
+
+  var renderer = Renderer();
+
+  function init() {
+    if (hasInit) {
+      return;
+    }
+    hasInit = true;
+    $("#game .renderer")
+      .width(Wolf.XRES + "px")
+      .height(Wolf.YRES + "px");
+    var container = document.createElement('span');
+    $('#game .renderer').append(container);
+    React.renderComponent(renderer, container);
+  }
+
+  function draw() {
+    return renderer.draw.apply(renderer, arguments);
+  }
+
+  // React takes care of these for us!
+  function clear() {
+    // no-op
+  }
+
+  function loadSprite() {
+    // no-op
+  }
+
+  function unloadSprite() {
+    // no-op
+  }
+
+  function reset() {
+    return renderer.reset.apply(renderer, arguments);
+  }
+
+  return {
+    init : init,
+    draw : draw,
+    clear : clear,
+    loadSprite : loadSprite,
+    unloadSprite : unloadSprite,
+    reset : reset
+  };
 
 })();
