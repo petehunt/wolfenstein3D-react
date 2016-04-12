@@ -1,3 +1,5 @@
+bug report...
+
 HTML5 Wolfenstein 3D
 ======================
 
